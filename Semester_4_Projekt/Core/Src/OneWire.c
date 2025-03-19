@@ -19,7 +19,6 @@
 void OneWire_BUS_queue_init(OneWire_BUS_Queue* queue) {
     queue->begin = 0;
     queue->end = 0;
-    queue->current_load = 0;
     memset(&queue->element[0], 0, ONEWIRE_BUS_QUEUE_SIZE * sizeof(OneWire_BUS_Instruction_Data));
 }
 
@@ -41,7 +40,6 @@ uint8_t OneWire_BUS_enqueue(OneWire_BUS_Queue* queue, OneWire_BUS_Instruction_Da
     queue->element[queue->begin] = *data;
     __DMB();             // Ensure memory update before updating the pointer
     queue->begin = next_begin;    // Atomically move tail forward
-    queue->current_load++;
 
     return 1;  // Successfully enqueued
 }
@@ -60,9 +58,8 @@ uint8_t OneWire_BUS_dequeue(OneWire_BUS_Queue* queue, OneWire_BUS_Instruction_Da
     if (queue->begin == queue->end) return 0;  // Queue empty
 
     *data = queue->element[queue->end];
-    __DMB();  // Ensure memory ordering before moving head
+    //__DMB();  // Ensure memory ordering before moving head
     queue->end = (queue->end + 1) % ONEWIRE_BUS_QUEUE_SIZE;
-    queue->current_load--;
 
     return 1;
 }
@@ -81,16 +78,16 @@ void OneWire_Write1(OneWire_HandleTypedef* honew){
 
     instrData.instr = ONEWIRE_ATOMIC_WRITE;
     instrData.data = (uint8_t*)GPIO_PIN_RESET;
-    instrData.wait_time = 1;
+    instrData.wait_time = 100;
     OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
 
     instrData.instr = ONEWIRE_ATOMIC_WRITE;
     instrData.data = (uint8_t*)GPIO_PIN_SET;
-    instrData.wait_time = 60;
+    instrData.wait_time = 5900;
     OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
 
-    instrData.instr = ONEWIRE_ATOMIC_DONE;
-    OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
+//    instrData.instr = ONEWIRE_ATOMIC_DONE;
+//    OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
 
     if(honew->htim->State == HAL_TIM_STATE_READY){
         HAL_TIM_Base_Start_IT(honew->htim);
@@ -111,16 +108,16 @@ void OneWire_Write0(OneWire_HandleTypedef* honew){
 
     instrData.instr = ONEWIRE_ATOMIC_WRITE;
     instrData.data = (uint8_t*)GPIO_PIN_RESET;
-    instrData.wait_time = 60;
+    instrData.wait_time = 5900;
     OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
 
     instrData.instr = ONEWIRE_ATOMIC_WRITE;
     instrData.data = (uint8_t*)GPIO_PIN_SET;
-    instrData.wait_time = 1;
+    instrData.wait_time = 100;
     OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
 
-    instrData.instr = ONEWIRE_ATOMIC_DONE;
-    OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
+//    instrData.instr = ONEWIRE_ATOMIC_DONE;
+//    OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
 
     if(honew->htim->State == HAL_TIM_STATE_READY){
         HAL_TIM_Base_Start_IT(honew->htim);
@@ -142,17 +139,17 @@ void OneWire_Read(OneWire_HandleTypedef* honew, uint8_t* data_ptr){
 
     instrData.instr = ONEWIRE_ATOMIC_WRITE;
     instrData.data = (uint8_t*)GPIO_PIN_RESET;
-    instrData.wait_time = 1;
+    instrData.wait_time = 100;
     OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
 
     instrData.instr = ONEWIRE_ATOMIC_WRITE;
     instrData.data = (uint8_t*)GPIO_PIN_SET;
-    instrData.wait_time = 14;
+    instrData.wait_time = 1400;
     OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
 
     instrData.instr = ONEWIRE_ATOMIC_READ;
     instrData.data = data_ptr;
-    instrData.wait_time = 45;
+    instrData.wait_time = 4500;
     OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
 
     instrData.instr = ONEWIRE_ATOMIC_DONE;
@@ -233,13 +230,11 @@ void OneWire_TIM_Hook(OneWire_HandleTypedef* honew){
 
         break;
     }
+    //HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_2);
     __HAL_TIM_CLEAR_FLAG(honew->htim, TIM_FLAG_UPDATE); // Clear any pending interrupt
-    if (honew->bus_queue.current_load == 0)
-        honew->htim->Instance->ARR = UINT16_MAX;
-    else
-        honew->htim->Instance->ARR = data.wait_time;
+    honew->htim->Instance->ARR = data.wait_time;
     honew->htim->Instance->CNT = 0;
-    __disable_irq();
-    HAL_TIM_Base_Start_IT(honew->htim);
-    __enable_irq();
+    if (honew->bus_queue.begin != honew->bus_queue.end) // if queue is not empty start tim
+        HAL_TIM_Base_Start_IT(honew->htim);
+    //HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_2);
 }

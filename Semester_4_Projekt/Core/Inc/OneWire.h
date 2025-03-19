@@ -29,7 +29,6 @@ typedef struct {
     OneWire_BUS_Instruction_Data element[ONEWIRE_BUS_QUEUE_SIZE];
     uint32_t begin;
     uint32_t end;
-    uint32_t current_load;
 } OneWire_BUS_Queue;
 
 typedef struct {
