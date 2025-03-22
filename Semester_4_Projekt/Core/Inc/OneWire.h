@@ -2,23 +2,16 @@
  * OneWire.h
  *
  *  Created on: Mar 18, 2025
- *      Author: johra
+ *      Author: Johra-Markus Singh
  */
-
-/**
- * Functions ...
- * been taken from "https://www.analog.com/en/resources/app-notes/1wire-search-algorithm.html",
- * and modified.
- */
-
-
 
 /** TODO
  *
- *  Implement ReadByte()
- *  Implement Reset()
  *  Bus Timings defines instead of Magic No.
- *  CRC8 calculation/lookup
+ *
+ *  NOTE:
+ *  Ive deleted the whole search algorithm functions again, because they
+ *  are not doable at this point, with the non-blocking nature of the libs
  */
 
 #ifndef INC_ONEWIRE_FIRSTTESTS_H_
@@ -27,17 +20,17 @@
 #include "stm32f4xx_hal.h"
 #include <string.h>
 
-// There is a great formula to calculate the min queue size, which this margin is to narrow to explain
 #define ONEWIRE_BUS_QUEUE_SIZE 1024
 
 // Bus Timings defines still missing... hardcoded into OneWire_BUS_x functions!
 
-#define ONEWIRE_MAX_DEVICES 69
+#define ONEWIRE_MAX_DEVICES 10
 
 typedef enum {
-    ONEWIRE_ATOMIC_WRITE    = 0,
-    ONEWIRE_ATOMIC_READ     = 1,
-    ONEWIRE_ATOMIC_DONE     = 2
+    ONEWIRE_ATOMIC_WRITE      = 0,
+    ONEWIRE_ATOMIC_READ       = 1,
+    ONEWIRE_ATOMIC_READ_DONE  = 2,
+    ONEWIRE_ATOMIC_RESET_DONE = 3
 } OneWire_BUS_InstructionSet ;
 
 typedef struct {
@@ -52,16 +45,22 @@ typedef struct {
     uint32_t end;
 } OneWire_BUS_Queue;
 
+typedef enum {
+    ONEWIRE_CMD_SearchROM   = 0xF0,
+    ONEWIRE_CMD_ReadROM     = 0x33,
+    ONEWIRE_CMD_MatchROM    = 0x55,
+    ONEWIRE_CMD_SkipROM     = 0xCC,
+    ONEWIRE_CMD_AlarmSearch = 0xEC,
+} OneWire_ROM_CMD;
+
 typedef struct {
     OneWire_BUS_Queue bus_queue;
     TIM_HandleTypeDef* htim;
     GPIO_TypeDef* gpio_port;
     uint16_t gpio_pin;
 
-    uint8_t ROM_NO[ONEWIRE_MAX_DEVICES];
-    int32_t LastDiscrepancy;
-    int32_t LastFamilyDiscrepancy;
-    int32_t LastDeviceFlag;
+    uint8_t temp_byte_buffer[8];
+    uint8_t received_byte;
 } OneWire_HandleTypedef;
 
 void OneWire_BUS_queue_init(OneWire_BUS_Queue*);
@@ -72,17 +71,15 @@ void OneWire_BUS_ReadBit(OneWire_HandleTypedef*, uint8_t*);
 
 void OneWire_init(OneWire_HandleTypedef*,  TIM_HandleTypeDef*, GPIO_TypeDef*, uint16_t);
 void OneWire_WriteByte(OneWire_HandleTypedef*, uint8_t);
-void OneWire_ReadByte(OneWire_HandleTypedef*,uint8_t*);
+void OneWire_ReadByte(OneWire_HandleTypedef*, uint8_t*);
+void OneWire_Reset(OneWire_HandleTypedef*, uint8_t*);
 void OneWire_TIM_Hook(OneWire_HandleTypedef*);
 
+void OneWire_ReadDoneCallback(OneWire_HandleTypedef*);
+void OneWire_ResetDoneCallback(OneWire_HandleTypedef*);
 
-// modified functions from Analog Devices
-uint8_t OneWire_First(OneWire_HandleTypedef*);
-uint8_t OneWire_Next(OneWire_HandleTypedef*);
-uint8_t  OneWire_Verify(OneWire_HandleTypedef*);
-void OneWire_TargetSetup(OneWire_HandleTypedef*, uint8_t family_code);
-void OneWire_FamilySkipSetup(OneWire_HandleTypedef*);
-uint8_t  OneWire_Reset(OneWire_HandleTypedef*);
-uint8_t  OneWire_Search(OneWire_HandleTypedef*);
+void OneWire_ErrorHandler(OneWire_HandleTypedef*);
+
+
 
 #endif /* INC_ONEWIRE_FIRSTTESTS_H_ */
