@@ -44,6 +44,10 @@ TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
 OneWire_HandleTypedef honew1;
+uint8_t romNo[8];
+uint8_t scratchpad[8];
+uint8_t presence_pulse = 1;
+float temp;
 
 /* USER CODE END PV */
 
@@ -60,9 +64,9 @@ static void MX_TIM2_Init(void);
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim){
     if(htim->Instance == htim2.Instance){
-//        HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_2);
+        //HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_2);
         OneWire_TIM_Hook(&honew1);
-//        HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_2);
+        //HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_2);
     }
 }
 
@@ -102,14 +106,47 @@ int main(void)
 
   OneWire_init(&honew1, &htim2, GPIOA, GPIO_PIN_1);
 
+  OneWire_Reset(&honew1, &presence_pulse);
+  while(presence_pulse);
+  OneWire_WriteByte(&honew1, ONEWIRE_CMD_ReadROM);
+  for(uint8_t i = 0; i < 8; ++i)
+      OneWire_ReadByte(&honew1, &(romNo[i]));
+
+
+
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-      HAL_Delay(100);
-      OneWire_WriteByte(&honew1, 0b01101001);
+      OneWire_Reset(&honew1, &presence_pulse);
+      while(presence_pulse);
+
+      OneWire_WriteByte(&honew1, ONEWIRE_CMD_SkipROM);
+
+      OneWire_WriteByte(&honew1, 0x44); // convert Temp
+
+      HAL_Delay(10);
+
+      OneWire_Reset(&honew1, &presence_pulse);
+      while(presence_pulse);
+
+      OneWire_WriteByte(&honew1, ONEWIRE_CMD_SkipROM);
+
+      OneWire_WriteByte(&honew1, 0xBE); // read Scratchpad
+      for(uint8_t i = 0; i < 8; ++i)
+          OneWire_ReadByte(&honew1, &(scratchpad[i]));
+
+      HAL_Delay(10);
+
+      temp = (scratchpad[0] | (scratchpad[1] << 8)) / 16.0f;
+
+      HAL_Delay(1000);
+
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
