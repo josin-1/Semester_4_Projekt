@@ -19,7 +19,7 @@
 void OneWire_BUS_queue_init(OneWire_BUS_Queue* queue) {
     queue->begin = 0;
     queue->end = 0;
-    memset(&queue->element[0], 0, ONEWIRE_BUS_QUEUE_SIZE * sizeof(OneWire_BUS_Instruction_Data));
+    memset(&queue->element[0], 0, ONEWIRE_BUS_QUEUE_SIZE * sizeof(OneWire_BUS_InstructionData));
 }
 
 /**
@@ -32,7 +32,7 @@ void OneWire_BUS_queue_init(OneWire_BUS_Queue* queue) {
 *
 * @retval 0 if push failed (Queue full), 1 if successful
 */
-uint8_t OneWire_BUS_enqueue(OneWire_BUS_Queue* queue, OneWire_BUS_Instruction_Data* data){
+uint8_t OneWire_BUS_enqueue(OneWire_BUS_Queue* queue, OneWire_BUS_InstructionData* data){
     uint32_t next_begin = (queue->begin + 1) % ONEWIRE_BUS_QUEUE_SIZE;
     if (next_begin == queue->end) return 0;  // Queue full
 
@@ -54,7 +54,7 @@ uint8_t OneWire_BUS_enqueue(OneWire_BUS_Queue* queue, OneWire_BUS_Instruction_Da
 *
 * @retval 0 if pull failed (Queue empty), 1 if successful
 */
-uint8_t OneWire_BUS_dequeue(OneWire_BUS_Queue* queue, OneWire_BUS_Instruction_Data* data){
+uint8_t OneWire_BUS_dequeue(OneWire_BUS_Queue* queue, OneWire_BUS_InstructionData* data){
     if (queue->begin == queue->end) return 0;  // Queue empty
 
     *data = queue->element[queue->end];
@@ -75,32 +75,30 @@ uint8_t OneWire_BUS_dequeue(OneWire_BUS_Queue* queue, OneWire_BUS_Instruction_Da
 * @retval none
 */
 void OneWire_BUS_WriteBit(OneWire_HandleTypedef* honew, uint8_t data){
-    OneWire_BUS_Instruction_Data instrData;
+    OneWire_BUS_InstructionData instrData;
 
-    if (data > 1) // only 1 and 0 expected
-        return;
+    if (data > 1){ // only 1 and 0 expected
+        honew->errno = ONEWIRE_ERROR_WRITE_BADDATA;
+        OneWire_ErrorHandler(honew);
+    }
 
     instrData.instr = ONEWIRE_ATOMIC_WRITE;
     instrData.data = (uint8_t*)GPIO_PIN_RESET;
-    if (data == 1){
-        instrData.wait_time = 100;
+    instrData.wait_time = (data ? ONEWIRE_TIMINGS_WRITE1_LOW : ONEWIRE_TIMINGS_WRITE0_LOW);
+    if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
+        honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
+        OneWire_ErrorHandler(honew);
     }
-    else {
-        instrData.wait_time = 5900;
-    }
-    OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
 
     instrData.instr = ONEWIRE_ATOMIC_WRITE;
     instrData.data = (uint8_t*)GPIO_PIN_SET;
-    if (data == 1){
-        instrData.wait_time = 5900;
+    instrData.wait_time = (data ? ONEWIRE_TIMINGS_WRITE1_HIGH : ONEWIRE_TIMINGS_WRITE0_HIGH);
+    if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
+        honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
+        OneWire_ErrorHandler(honew);
     }
-    else {
-        instrData.wait_time = 100;
-    }
-    OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
 
-    if(honew->htim->State == HAL_TIM_STATE_READY){
+    if(honew->htim->State == HAL_TIM_STATE_READY){ // if TIM aint running, start it
         HAL_TIM_Base_Start_IT(honew->htim);
     }
 }
@@ -116,24 +114,33 @@ void OneWire_BUS_WriteBit(OneWire_HandleTypedef* honew, uint8_t data){
 * @retval none
 */
 void OneWire_BUS_ReadBit(OneWire_HandleTypedef* honew, uint8_t* data_ptr){
-    OneWire_BUS_Instruction_Data instrData;
+    OneWire_BUS_InstructionData instrData;
 
     instrData.instr = ONEWIRE_ATOMIC_WRITE;
     instrData.data = (uint8_t*)GPIO_PIN_RESET;
-    instrData.wait_time = 100;
-    OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
+    instrData.wait_time = ONEWIRE_TIMINGS_READBIT_LOW;
+    if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
+        honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
+        OneWire_ErrorHandler(honew);
+    }
 
     instrData.instr = ONEWIRE_ATOMIC_WRITE;
     instrData.data = (uint8_t*)GPIO_PIN_SET;
-    instrData.wait_time = 1400;
-    OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
+    instrData.wait_time = ONEWIRE_TIMINGS_READBIT_HIGH;
+    if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
+        honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
+        OneWire_ErrorHandler(honew);
+    }
 
     instrData.instr = ONEWIRE_ATOMIC_READ;
     instrData.data = data_ptr;
-    instrData.wait_time = 4500;
-    OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
+    instrData.wait_time = ONEWIRE_TIMINGS_READBIT_HOLD;
+    if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
+        honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
+        OneWire_ErrorHandler(honew);
+    }
 
-    if(honew->htim->State == HAL_TIM_STATE_READY){
+    if(honew->htim->State == HAL_TIM_STATE_READY){ // if TIM aint running, start it
         HAL_TIM_Base_Start_IT(honew->htim);
     }
 }
@@ -155,6 +162,12 @@ void OneWire_init(OneWire_HandleTypedef* honew, TIM_HandleTypeDef* htim, GPIO_Ty
     honew->htim = htim;
     honew->gpio_port = port;
     honew->gpio_pin = pin;
+
+    honew->search.search_state = ONEWIRE_SEARCHSTATE_IDLE;
+
+    honew->num_devices = 0;
+
+    honew->errno = ONEWIRE_ERROR_NONE;
 }
 
 /**
@@ -185,16 +198,20 @@ void OneWire_WriteByte(OneWire_HandleTypedef* honew, uint8_t data){
 * @retval None
 */
 void OneWire_ReadByte(OneWire_HandleTypedef* honew, uint8_t* data_ptr){
-    OneWire_BUS_Instruction_Data instrData;
+    OneWire_BUS_InstructionData instrData;
 
     for (size_t i = 0; i < 8; ++i) {
         OneWire_BUS_ReadBit(honew, &(honew->temp_byte_buffer[i]));
     }
 
-    instrData.instr = ONEWIRE_ATOMIC_READ_DONE;
+    instrData.instr = ONEWIRE_ATOMIC_READ_BYTE_DONE;
     instrData.data = data_ptr;
-    instrData.wait_time = 1000;
-    OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
+    instrData.wait_time = ONEWIRE_TIMINGS_READ_DONE;
+
+    if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
+        honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
+        OneWire_ErrorHandler(honew);
+    }
 }
 
 /**
@@ -209,31 +226,136 @@ void OneWire_ReadByte(OneWire_HandleTypedef* honew, uint8_t* data_ptr){
 * @retval
 */
 void OneWire_Reset(OneWire_HandleTypedef* honew, uint8_t* data_ptr){
-    OneWire_BUS_Instruction_Data instrData;
+    OneWire_BUS_InstructionData instrData;
 
         instrData.instr = ONEWIRE_ATOMIC_WRITE;
         instrData.data = (uint8_t*)GPIO_PIN_RESET;
-        instrData.wait_time = 48000;
-        OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
+        instrData.wait_time = ONEWIRE_TIMINGS_RESET_LOW;
+        if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
+            honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
+            OneWire_ErrorHandler(honew);
+        }
 
         instrData.instr = ONEWIRE_ATOMIC_WRITE;
         instrData.data = (uint8_t*)GPIO_PIN_SET;
-        instrData.wait_time = 10000;
-        OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
+        instrData.wait_time = ONEWIRE_TIMINGS_RESET_HIGH;
+        if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
+            honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
+            OneWire_ErrorHandler(honew);
+        }
 
         instrData.instr = ONEWIRE_ATOMIC_READ;
         instrData.data = data_ptr;
-        instrData.wait_time = 48000 - 10000;
-        OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
+        instrData.wait_time = ONEWIRE_TIMINGS_RESET_HOLD;
+        if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
+            honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
+            OneWire_ErrorHandler(honew);
+        }
 
         instrData.instr = ONEWIRE_ATOMIC_RESET_DONE;
-        instrData.wait_time = 1000;
-        OneWire_BUS_enqueue(&(honew->bus_queue), &instrData);
+        instrData.wait_time = ONEWIRE_TIMINGS_RESET_REC;
+        if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
+            honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
+            OneWire_ErrorHandler(honew);
+        }
 
         if(honew->htim->State == HAL_TIM_STATE_READY){
             HAL_TIM_Base_Start_IT(honew->htim);
         }
 }
+
+/**
+* @brief Use the Read ROM command for 1-Wire communication
+*
+* @param honew: Handle Struct pointer
+*
+* @retval None
+*/
+void OneWire_ReadROM(OneWire_HandleTypedef* honew){
+    OneWire_BUS_InstructionData instrData;
+
+    OneWire_WriteByte(honew, ONEWIRE_CMD_ReadROM);
+    for(uint8_t i = 0; i < 8; ++i)
+        OneWire_ReadByte(honew, &(honew->readROM_buffer[i]));
+
+    instrData.instr = ONEWIRE_ATOMIC_READ_ROM_DONE;
+    instrData.wait_time = ONEWIRE_TIMINGS_READ_DONE;
+
+    if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
+        honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
+        OneWire_ErrorHandler(honew);
+    }
+}
+
+/**
+* @brief Use the Skip ROM command for 1-Wire communication
+*
+* @param honew: Handle Struct pointer
+*
+* @retval None
+*/
+void OneWire_SkipROM(OneWire_HandleTypedef* honew){
+    OneWire_WriteByte(honew, ONEWIRE_CMD_SkipROM);
+}
+
+/**
+* @brief Use the Match ROM command for 1-Wire communication
+*
+* @param honew: Handle Struct pointer
+* @param rom: ROM to be matched (uint8_t array[8] = 64byte)
+*
+* @retval None
+*/
+void OneWire_MatchROM(OneWire_HandleTypedef* honew, uint8_t rom[8]){
+    OneWire_WriteByte(honew, ONEWIRE_CMD_MatchROM);
+    for(uint8_t i = 0; i < 8; ++i)
+        OneWire_WriteByte(honew, rom[i]);
+}
+
+// SearchROM work in progress
+/**
+* @brief Start a complete search ROM algorithm
+*
+* After finishing the SearchROMCallback is called, and the values are saved
+* inside the handling structure at ROM_buffer[], at the amount of found
+* devices is found at num_devices
+*
+* @param honew: Handle Struct pointer
+*
+* @retval None
+*/
+//void OneWire_SearchROM(OneWire_HandleTypedef* honew){
+//
+//    switch (honew->search.search_state){
+//    case ONEWIRE_SEARCHSTATE_IDLE:
+//        honew->search.last_discrepancy = 0;
+//        honew->search.search_bit_index = 0;
+//        honew->search.done = 0;
+//        honew->search.presence_pulse = 0;
+//
+//        OneWire_Reset(honew, &(honew->search.presence_pulse));
+//        honew->search.search_state = ONEWIRE_SEARCHSTATE_RESET;
+//        break;
+//    case ONEWIRE_SEARCHSTATE_RESET:
+//        if (honew->search.presence_pulse == 1){
+//            honew->errno = ONEWIRE_ERROR_SEARCH_NOPULSE;
+//            OneWire_SearchErrorHandler(honew);
+//            break;
+//        }
+//        OneWire_WriteByte(honew, ONEWIRE_CMD_SearchROM);
+//
+//        OneWire_BUS_ReadBit(honew, &(honew->search.))
+//        honew->search.search_state = ONEWIRE_SEARCHSTATE_SEND_CMD;
+//        ONEWIRE_SEARCHST
+//        break;
+//    case ONEWIRE_SEARCHSTATE_READ_BIT:
+//
+//        break;
+//    case ONEWIRE_SEARCHSTATE_DONE:
+//
+//        break;
+//    }
+//}
 
 /**
 * @brief Timer Interrupt Hook Function
@@ -248,32 +370,43 @@ void OneWire_Reset(OneWire_HandleTypedef* honew, uint8_t* data_ptr){
 void OneWire_TIM_Hook(OneWire_HandleTypedef* honew){
     HAL_TIM_Base_Stop_IT(honew->htim);
 
-    OneWire_BUS_Instruction_Data data;
+    OneWire_BUS_InstructionData data;
     if (!OneWire_BUS_dequeue(&(honew->bus_queue), &data))
         return;
 
     switch(data.instr){
     case ONEWIRE_ATOMIC_WRITE:
-//        HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_2);
         HAL_GPIO_WritePin(honew->gpio_port, honew->gpio_pin, (GPIO_PinState)(data.data));
-//        HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_2);
         break;
     case ONEWIRE_ATOMIC_READ:
-        HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_2);
         *(data.data) = HAL_GPIO_ReadPin(honew->gpio_port, honew->gpio_pin);
-        HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_2);
         break;
-    case ONEWIRE_ATOMIC_READ_DONE:
+    case ONEWIRE_ATOMIC_READ_BYTE_DONE:
         *(data.data) = 0; // Reset stored byte
         for (size_t i = 0; i < 8; i++) {
             *(data.data) |= (honew->temp_byte_buffer[i] << i);
         }
         OneWire_ReadDoneCallback(honew);
         break;
+    case ONEWIRE_ATOMIC_READ_ROM_DONE:
+        *(data.data) = 0; // Reset stored byte
+        for (size_t i = 0; i < 8; i++) {
+            *(data.data) |= (honew->temp_byte_buffer[i] << i);
+        }
+        OneWire_ReadROMCallback(honew);
+        break;
     case ONEWIRE_ATOMIC_RESET_DONE:
+        if (honew->search.search_state == ONEWIRE_SEARCHSTATE_RESET){
+
+            break;
+        }
         OneWire_ResetDoneCallback(honew);
         break;
     }
+    // SearchROM WIP
+//    if (honew->search.search_state != ONEWIRE_SEARCHSTATE_IDLE)
+//        OneWire_SearchROM(honew);
+
     __HAL_TIM_CLEAR_FLAG(honew->htim, TIM_FLAG_UPDATE); // Clear any pending interrupt
     honew->htim->Instance->ARR = data.wait_time;
     honew->htim->Instance->CNT = 0;
@@ -289,7 +422,19 @@ __weak void OneWire_ResetDoneCallback(OneWire_HandleTypedef* honew){
     __NOP();
 }
 
-void OneWire_ErrorHandler(OneWire_HandleTypedef* honew){
+__weak void OneWire_ReadROMCallback(OneWire_HandleTypedef* honew){
+    __NOP();
+}
+
+__weak void OneWire_SearchROMCallback(OneWire_HandleTypedef* honew){
+    __NOP();
+}
+
+__weak void OneWire_SearchErrorHandler(OneWire_HandleTypedef* honew){
+    __NOP();
+}
+
+__weak void OneWire_ErrorHandler(OneWire_HandleTypedef* honew){
     __NOP();
 }
 
