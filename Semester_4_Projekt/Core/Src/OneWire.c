@@ -163,7 +163,7 @@ void OneWire_init(OneWire_HandleTypedef* honew, TIM_HandleTypeDef* htim, GPIO_Ty
     honew->gpio_port = port;
     honew->gpio_pin = pin;
 
-    honew->search.search_state = ONEWIRE_SEARCHSTATE_IDLE;
+//    honew->search.search_state = ONEWIRE_SEARCHSTATE_IDLE;
 
     honew->num_devices = 0;
 
@@ -223,7 +223,7 @@ void OneWire_ReadByte(OneWire_HandleTypedef* honew, uint8_t* data_ptr){
 * @param honew: Handle Struct pointer
 * @param data: Data Pointer for presence pulse read
 *
-* @retval
+* @retval none
 */
 void OneWire_Reset(OneWire_HandleTypedef* honew, uint8_t* data_ptr){
     OneWire_BUS_InstructionData instrData;
@@ -396,10 +396,10 @@ void OneWire_TIM_Hook(OneWire_HandleTypedef* honew){
         OneWire_ReadROMCallback(honew);
         break;
     case ONEWIRE_ATOMIC_RESET_DONE:
-        if (honew->search.search_state == ONEWIRE_SEARCHSTATE_RESET){
-
-            break;
-        }
+//        if (honew->search.search_state == ONEWIRE_SEARCHSTATE_RESET){
+//
+//            break;
+//        }
         OneWire_ResetDoneCallback(honew);
         break;
     }

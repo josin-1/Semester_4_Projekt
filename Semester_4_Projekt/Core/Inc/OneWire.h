@@ -13,9 +13,7 @@
 
 #define ONEWIRE_BUS_QUEUE_SIZE 1024
 
-// Bus Timings defines still missing... hardcoded into OneWire_BUS_x functions!
-
-#define ONEWIRE_MAX_DEVICES 10
+#define ONEWIRE_MAX_DEVICES 2
 
 #define ONEWIRE_TIMINGS_WRITE0_LOW      100
 #define ONEWIRE_TIMINGS_WRITE0_HIGH     5900
@@ -96,11 +94,11 @@ typedef struct {
     uint8_t temp_byte_buffer[8];
     uint8_t readROM_buffer[8];
 
-    OneWire_SearchTypedef search;
-    uint8_t ROM_buffer[ONEWIRE_MAX_DEVICES];
+//    OneWire_SearchTypedef search;
+//    uint8_t ROM_buffer[8][ONEWIRE_MAX_DEVICES];
     uint8_t num_devices;
 
-    uint8_t errno;
+    OneWire_ErrorTable errno;
 } OneWire_HandleTypedef;
 
 void OneWire_BUS_queue_init(OneWire_BUS_Queue*);
