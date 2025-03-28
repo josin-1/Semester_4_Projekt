@@ -70,6 +70,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim){
     }
 }
 
+void OneWire_ReadDoneCallback(OneWire_HandleTypedef* honew){
+    temp = (scratchpad[0] | (scratchpad[1] << 8)) / 16.0f;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -106,11 +110,11 @@ int main(void)
 
   OneWire_init(&honew1, &htim2, GPIOA, GPIO_PIN_1);
 
-  OneWire_Reset(&honew1, &presence_pulse);
-  while(presence_pulse);
-  OneWire_WriteByte(&honew1, ONEWIRE_CMD_ReadROM);
-  for(uint8_t i = 0; i < 8; ++i)
-      OneWire_ReadByte(&honew1, &(romNo[i]));
+//  OneWire_Reset(&honew1, &presence_pulse);
+//  while(presence_pulse);
+//  OneWire_WriteByte(&honew1, ONEWIRE_CMD_ReadROM);
+//  for(uint8_t i = 0; i < 8; ++i)
+//      OneWire_ReadByte(&honew1, &(romNo[i]));
 
 
 
@@ -139,13 +143,6 @@ int main(void)
       OneWire_WriteByte(&honew1, 0xBE); // read Scratchpad
       for(uint8_t i = 0; i < 8; ++i)
           OneWire_ReadByte(&honew1, &(scratchpad[i]));
-
-      HAL_Delay(10);
-
-      temp = (scratchpad[0] | (scratchpad[1] << 8)) / 16.0f;
-
-      HAL_Delay(1000);
-
 
     /* USER CODE END WHILE */
 
