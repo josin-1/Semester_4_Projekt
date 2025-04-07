@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "OneWire.h"
+#include "DS18B20.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -40,14 +41,17 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+
 TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
 OneWire_HandleTypedef honew1;
-uint8_t romNo[8];
-uint8_t scratchpad[8];
-uint8_t presence_pulse = 1;
+DS18B20_HandleTypedef hds18b20;
 float temp;
+int8_t tHigh;
+int8_t tLow;
+uint8_t resolution;
 
 /* USER CODE END PV */
 
@@ -55,6 +59,7 @@ float temp;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -64,14 +69,8 @@ static void MX_TIM2_Init(void);
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim){
     if(htim->Instance == htim2.Instance){
-        //HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_2);
         OneWire_TIM_Hook(&honew1);
-        //HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_2);
     }
-}
-
-void OneWire_ReadDoneCallback(OneWire_HandleTypedef* honew){
-    temp = (scratchpad[0] | (scratchpad[1] << 8)) / 16.0f;
 }
 
 /* USER CODE END 0 */
@@ -106,19 +105,19 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_TIM2_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 
   OneWire_init(&honew1, &htim2, GPIOA, GPIO_PIN_1);
+  DS18B20_init(&hds18b20, &honew1);
 
-//  OneWire_Reset(&honew1, &presence_pulse);
-//  while(presence_pulse);
-//  OneWire_WriteByte(&honew1, ONEWIRE_CMD_ReadROM);
-//  for(uint8_t i = 0; i < 8; ++i)
-//      OneWire_ReadByte(&honew1, &(romNo[i]));
+  DS18B20_ReadROM(&hds18b20);
+  HAL_Delay(100);
 
-
-
-
+//  DS18B20_ReadScratchpad(&hds18b20);
+//  DS18B20_setThresholdT(&hds18b20, -69, 69);
+//  DS18B20_setResolution(&hds18b20, DS18B20_RES_9Bit);
+//  HAL_Delay(10);
 
   /* USER CODE END 2 */
 
@@ -126,23 +125,12 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-      OneWire_Reset(&honew1, &presence_pulse);
-      while(presence_pulse);
-
-      OneWire_WriteByte(&honew1, ONEWIRE_CMD_SkipROM);
-
-      OneWire_WriteByte(&honew1, 0x44); // convert Temp
-
-      HAL_Delay(10);
-
-      OneWire_Reset(&honew1, &presence_pulse);
-      while(presence_pulse);
-
-      OneWire_WriteByte(&honew1, ONEWIRE_CMD_SkipROM);
-
-      OneWire_WriteByte(&honew1, 0xBE); // read Scratchpad
-      for(uint8_t i = 0; i < 8; ++i)
-          OneWire_ReadByte(&honew1, &(scratchpad[i]));
+      DS18B20_ConvertT_single(&hds18b20);
+      DS18B20_ReadScratchpad(&hds18b20);
+      DS18B20_getTemp(&hds18b20, &temp);
+      DS18B20_getResolution(&hds18b20, &resolution);
+      DS18B20_getThresholdT(&hds18b20, &tHigh, &tLow);
+      HAL_Delay(15);
 
     /* USER CODE END WHILE */
 
@@ -195,6 +183,40 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
 }
 
 /**
@@ -255,6 +277,7 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_1|GPIO_PIN_2, GPIO_PIN_RESET);

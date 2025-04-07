@@ -11,14 +11,16 @@
 #include "stm32f4xx_hal.h"
 #include <string.h>
 
+#define ONEWIRE_DEBUG 1
+
 #define ONEWIRE_BUS_QUEUE_SIZE 1024
 
 #define ONEWIRE_MAX_DEVICES 2
 
-#define ONEWIRE_TIMINGS_WRITE0_LOW      100
-#define ONEWIRE_TIMINGS_WRITE0_HIGH     5900
-#define ONEWIRE_TIMINGS_WRITE1_LOW      5900
-#define ONEWIRE_TIMINGS_WRITE1_HIGH     100
+#define ONEWIRE_TIMINGS_WRITE0_LOW      5900
+#define ONEWIRE_TIMINGS_WRITE0_HIGH     100
+#define ONEWIRE_TIMINGS_WRITE1_LOW      100
+#define ONEWIRE_TIMINGS_WRITE1_HIGH     5900
 #define ONEWIRE_TIMINGS_READBIT_LOW     100
 #define ONEWIRE_TIMINGS_READBIT_HIGH    1400
 #define ONEWIRE_TIMINGS_READBIT_HOLD    4500
@@ -56,6 +58,11 @@ typedef struct {
     OneWire_BUS_InstructionData element[ONEWIRE_BUS_QUEUE_SIZE];
     uint32_t begin;
     uint32_t end;
+
+#ifdef ONEWIRE_DEBUG
+    uint32_t current_elements;
+    uint32_t max_elements;
+#endif /* ONEWIRE_DEBUG */
 } OneWire_BUS_Queue;
 
 typedef enum {
@@ -64,7 +71,7 @@ typedef enum {
     ONEWIRE_CMD_MatchROM    = 0x55,
     ONEWIRE_CMD_SkipROM     = 0xCC,
     ONEWIRE_CMD_AlarmSearch = 0xEC,
-} OneWire_ROM_CMD;
+} OneWire_CMD;
 
 // SearchROM WIP
 //typedef enum {
@@ -111,7 +118,7 @@ void OneWire_init(OneWire_HandleTypedef*,  TIM_HandleTypeDef*, GPIO_TypeDef*, ui
 void OneWire_WriteByte(OneWire_HandleTypedef*, uint8_t);
 void OneWire_ReadByte(OneWire_HandleTypedef*, uint8_t*);
 void OneWire_Reset(OneWire_HandleTypedef*, uint8_t*);
-void OneWire_ReadROM(OneWire_HandleTypedef*);
+void OneWire_ReadROM(OneWire_HandleTypedef*, uint8_t[8]);
 void OneWire_SkipROM(OneWire_HandleTypedef*);
 void OneWire_MatchROM(OneWire_HandleTypedef*, uint8_t[8]);
 
