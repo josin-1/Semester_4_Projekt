@@ -19,6 +19,7 @@
 void OneWire_BUS_queue_init(OneWire_BUS_Queue* queue) {
     queue->begin = 0;
     queue->end = 0;
+    queue->current_elements = 0;
     memset(&queue->element[0], 0, ONEWIRE_BUS_QUEUE_SIZE * sizeof(OneWire_BUS_InstructionData));
 }
 
@@ -41,6 +42,12 @@ uint8_t OneWire_BUS_enqueue(OneWire_BUS_Queue* queue, OneWire_BUS_InstructionDat
     __DMB(); // Data Memory Barrier; Ensure memory update before updating the pointer
     queue->begin = next_begin;    // Atomically move tail forward
 
+#ifdef ONEWIRE_DEBUG
+    queue->current_elements++;
+    if (queue->current_elements > queue->max_elements)
+        queue->max_elements = queue->current_elements;
+#endif /* ONEWIRE_DEBUG */
+
     return 1;  // Successfully enqueued
 }
 
@@ -61,6 +68,9 @@ uint8_t OneWire_BUS_dequeue(OneWire_BUS_Queue* queue, OneWire_BUS_InstructionDat
     //__DMB();  // Dont need DMB, if ISR running with highest prio!
     queue->end = (queue->end + 1) % ONEWIRE_BUS_QUEUE_SIZE;
 
+#ifdef ONEWIRE_DEBUG
+    queue->current_elements--;
+#endif /* ONEWIRE_DEBUG */
     return 1;
 }
 
@@ -271,12 +281,12 @@ void OneWire_Reset(OneWire_HandleTypedef* honew, uint8_t* data_ptr){
 *
 * @retval None
 */
-void OneWire_ReadROM(OneWire_HandleTypedef* honew){
+void OneWire_ReadROM(OneWire_HandleTypedef* honew, uint8_t rom[8]){
     OneWire_BUS_InstructionData instrData;
 
     OneWire_WriteByte(honew, ONEWIRE_CMD_ReadROM);
     for(uint8_t i = 0; i < 8; ++i)
-        OneWire_ReadByte(honew, &(honew->readROM_buffer[i]));
+        OneWire_ReadByte(honew, &(rom[i]));
 
     instrData.instr = ONEWIRE_ATOMIC_READ_ROM_DONE;
     instrData.wait_time = ONEWIRE_TIMINGS_READ_DONE;
@@ -389,10 +399,6 @@ void OneWire_TIM_Hook(OneWire_HandleTypedef* honew){
         OneWire_ReadDoneCallback(honew);
         break;
     case ONEWIRE_ATOMIC_READ_ROM_DONE:
-        *(data.data) = 0; // Reset stored byte
-        for (size_t i = 0; i < 8; i++) {
-            *(data.data) |= (honew->temp_byte_buffer[i] << i);
-        }
         OneWire_ReadROMCallback(honew);
         break;
     case ONEWIRE_ATOMIC_RESET_DONE:
