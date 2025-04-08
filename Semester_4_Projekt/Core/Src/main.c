@@ -114,10 +114,9 @@ int main(void)
   DS18B20_ReadROM(&hds18b20);
   HAL_Delay(100);
 
-//  DS18B20_ReadScratchpad(&hds18b20);
-//  DS18B20_setThresholdT(&hds18b20, -69, 69);
-//  DS18B20_setResolution(&hds18b20, DS18B20_RES_9Bit);
-//  HAL_Delay(10);
+  OneWire_SearchStart(&honew1);
+
+
 
   /* USER CODE END 2 */
 
@@ -125,12 +124,11 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-      DS18B20_ConvertT_single(&hds18b20);
-      DS18B20_ReadScratchpad(&hds18b20);
-      DS18B20_getTemp(&hds18b20, &temp);
-      DS18B20_getResolution(&hds18b20, &resolution);
-      DS18B20_getThresholdT(&hds18b20, &tHigh, &tLow);
-      HAL_Delay(15);
+//      DS18B20_ConvertT_single(&hds18b20);
+//      temp = DS18B20_getTemp(&hds18b20);
+//      resolution = DS18B20_getResolution(&hds18b20);
+//      DS18B20_getThresholdT(&hds18b20, &tHigh, &tLow);
+//      HAL_Delay(15);
 
     /* USER CODE END WHILE */
 

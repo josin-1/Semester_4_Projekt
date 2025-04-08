@@ -5,12 +5,6 @@
  *      Author: Johra-Markus Singh
  */
 
-/*
- * TODO
- *
- * - Error Handling
- */
-
 #ifndef INC_DS18B20_H_
 #define INC_DS18B20_H_
 
@@ -26,6 +20,17 @@ typedef enum {
     DS18B20_CMD_READ_POW_SUPP = 0xB4,
 } DS18B20_CMD;
 
+
+/* --- Max Conversion Time ---
+ * +------------+-----------+
+ * | Resolution | Time [ms] |
+ * +------------+-----------+
+ * |    9 Bit   |   93.75   |
+ * |   10 Bit   |  187.75   |
+ * |   11 Bit   |    375    |
+ * |   12 Bit   |    750    |
+ * +------------+-----------+
+ */
 typedef enum {
     DS18B20_RES_9Bit  = 0b00,
     DS18B20_RES_10Bit = 0b01,
@@ -43,14 +48,19 @@ typedef struct {
 
 
 void DS18B20_init(DS18B20_HandleTypedef*, OneWire_HandleTypedef*);
+
 void DS18B20_ConvertT_single(DS18B20_HandleTypedef*);
 void DS18B20_ConvertT_all(DS18B20_HandleTypedef*);
 void DS18B20_ReadScratchpad(DS18B20_HandleTypedef*);
 void DS18B20_WriteScratchpad(DS18B20_HandleTypedef*);
+void DS18B20_RecallEEPROM(DS18B20_HandleTypedef*);
 void DS18B20_ReadROM(DS18B20_HandleTypedef*);
+
 float DS18B20_getTemp(DS18B20_HandleTypedef*);
+
 void DS18B20_setThresholdT(DS18B20_HandleTypedef*, int8_t, int8_t);
 void DS18B20_getThresholdT(DS18B20_HandleTypedef*, int8_t*, int8_t*);
+
 void DS18B20_setResolution(DS18B20_HandleTypedef*, DS18B20_Resolution);
 DS18B20_Resolution DS18B20_getResolution(DS18B20_HandleTypedef*);
 

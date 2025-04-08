@@ -173,10 +173,6 @@ void OneWire_init(OneWire_HandleTypedef* honew, TIM_HandleTypeDef* htim, GPIO_Ty
     honew->gpio_port = port;
     honew->gpio_pin = pin;
 
-//    honew->search.search_state = ONEWIRE_SEARCHSTATE_IDLE;
-
-    honew->num_devices = 0;
-
     honew->errno = ONEWIRE_ERROR_NONE;
 }
 
@@ -216,8 +212,7 @@ void OneWire_ReadByte(OneWire_HandleTypedef* honew, uint8_t* data_ptr){
 
     instrData.instr = ONEWIRE_ATOMIC_READ_BYTE_DONE;
     instrData.data = data_ptr;
-    instrData.wait_time = ONEWIRE_TIMINGS_READ_DONE;
-
+    instrData.wait_time = 1;
     if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
         honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
         OneWire_ErrorHandler(honew);
@@ -263,7 +258,7 @@ void OneWire_Reset(OneWire_HandleTypedef* honew, uint8_t* data_ptr){
         }
 
         instrData.instr = ONEWIRE_ATOMIC_RESET_DONE;
-        instrData.wait_time = ONEWIRE_TIMINGS_RESET_REC;
+        instrData.wait_time = 1;
         if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
             honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
             OneWire_ErrorHandler(honew);
@@ -289,7 +284,7 @@ void OneWire_ReadROM(OneWire_HandleTypedef* honew, uint8_t rom[8]){
         OneWire_ReadByte(honew, &(rom[i]));
 
     instrData.instr = ONEWIRE_ATOMIC_READ_ROM_DONE;
-    instrData.wait_time = ONEWIRE_TIMINGS_READ_DONE;
+    instrData.wait_time = 1;
 
     if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
         honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
@@ -322,50 +317,65 @@ void OneWire_MatchROM(OneWire_HandleTypedef* honew, uint8_t rom[8]){
         OneWire_WriteByte(honew, rom[i]);
 }
 
-// SearchROM work in progress
-/**
-* @brief Start a complete search ROM algorithm
-*
-* After finishing the SearchROMCallback is called, and the values are saved
-* inside the handling structure at ROM_buffer[], at the amount of found
-* devices is found at num_devices
-*
-* @param honew: Handle Struct pointer
-*
-* @retval None
-*/
-//void OneWire_SearchROM(OneWire_HandleTypedef* honew){
-//
-//    switch (honew->search.search_state){
-//    case ONEWIRE_SEARCHSTATE_IDLE:
-//        honew->search.last_discrepancy = 0;
-//        honew->search.search_bit_index = 0;
-//        honew->search.done = 0;
-//        honew->search.presence_pulse = 0;
-//
-//        OneWire_Reset(honew, &(honew->search.presence_pulse));
-//        honew->search.search_state = ONEWIRE_SEARCHSTATE_RESET;
-//        break;
-//    case ONEWIRE_SEARCHSTATE_RESET:
-//        if (honew->search.presence_pulse == 1){
-//            honew->errno = ONEWIRE_ERROR_SEARCH_NOPULSE;
-//            OneWire_SearchErrorHandler(honew);
-//            break;
-//        }
-//        OneWire_WriteByte(honew, ONEWIRE_CMD_SearchROM);
-//
-//        OneWire_BUS_ReadBit(honew, &(honew->search.))
-//        honew->search.search_state = ONEWIRE_SEARCHSTATE_SEND_CMD;
-//        ONEWIRE_SEARCHST
-//        break;
-//    case ONEWIRE_SEARCHSTATE_READ_BIT:
-//
-//        break;
-//    case ONEWIRE_SEARCHSTATE_DONE:
-//
-//        break;
-//    }
-//}
+
+void OneWire_SearchStart(OneWire_HandleTypedef* honew) {
+    // reset complete search context
+    memset(&honew->search, 0, sizeof(OneWire_SearchContext));
+    honew->search.search_active = 1;
+    honew->search.device_count = 0;
+    honew->search.last_discrepancy = 0;
+    honew->search.last_device_flag = 0;
+
+    // Start first search iteration
+    OneWire_SearchStep(honew);
+}
+
+
+void OneWire_SearchStep(OneWire_HandleTypedef* honew) {
+    OneWire_BUS_InstructionData instrData;
+
+    if (honew->search.last_device_flag) {
+        honew->search.search_active = 0;
+        return; // All devices found
+    }
+
+    honew->search.bit_index = 0;
+    memset(honew->search.ROM_NO, 0, 8);
+
+    OneWire_Reset(honew, &(honew->temp_byte_buffer[0])); // save the presence pulse somewhere
+    OneWire_WriteByte(honew, ONEWIRE_CMD_SearchROM); // Search ROM command
+
+
+    for (uint8_t bit = 0; bit < 64; bit++) {
+        // Queue 2 reads (bit + complement) → stored in temp_bit_buffer[bit][0/1]
+        OneWire_BUS_ReadBit(honew, &honew->search.temp_bit_buffer[bit][0]); // read bit
+        OneWire_BUS_ReadBit(honew, &honew->search.temp_bit_buffer[bit][1]); // read complement
+
+        // Queue a special SEARCH_PROCESS_BIT instruction
+        instrData.instr = ONEWIRE_ATOMIC_SEARCH_PROCESS_BIT;
+        instrData.data = (uint8_t*)(uint32_t)bit; // pls ignore this weird cast... no warnings like this ;P
+        instrData.wait_time = 1;
+        if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
+            honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
+            OneWire_ErrorHandler(honew);
+        }
+
+        // WERE GONNA IGNORE THAT DELAY ... OKEY!!!
+        HAL_Delay(1);
+    }
+
+    // At the end, enqueue ONEWIRE_ATOMIC_SEARCH_DONE
+    instrData.instr = ONEWIRE_ATOMIC_SEARCH_DONE;
+    instrData.wait_time = 1;
+    if (!OneWire_BUS_enqueue(&(honew->bus_queue), &instrData)){
+        honew->errno = ONEWIRE_ERROR_QUEUE_FULL;
+        OneWire_ErrorHandler(honew);
+    }
+
+    if(honew->htim->State == HAL_TIM_STATE_READY){
+        HAL_TIM_Base_Start_IT(honew->htim);
+    }
+}
 
 /**
 * @brief Timer Interrupt Hook Function
@@ -402,16 +412,53 @@ void OneWire_TIM_Hook(OneWire_HandleTypedef* honew){
         OneWire_ReadROMCallback(honew);
         break;
     case ONEWIRE_ATOMIC_RESET_DONE:
-//        if (honew->search.search_state == ONEWIRE_SEARCHSTATE_RESET){
-//
-//            break;
-//        }
         OneWire_ResetDoneCallback(honew);
         break;
+    case ONEWIRE_ATOMIC_SEARCH_PROCESS_BIT:
+        uint8_t bit_index = (uint32_t)(data.data); // recover bit index
+        uint8_t bit = honew->search.temp_bit_buffer[bit_index][0];
+        uint8_t comp = honew->search.temp_bit_buffer[bit_index][1];
+
+        uint8_t search_path;
+
+        if (bit == 1 && comp == 1) {
+            honew->search.search_active = 0; // No devices responding
+            OneWire_SearchROMCallback(honew); // abort
+            break;
+        }
+
+        if (bit != comp) {
+            search_path = bit; // no conflict, use existing bit
+        } else {
+            // conflict — must choose
+            if (bit_index == honew->search.last_discrepancy)
+                search_path = 1;
+            else if (bit_index > honew->search.last_discrepancy)
+                search_path = 0;
+            else
+                search_path = (honew->search.ROM_NO[bit_index / 8] >> (bit_index % 8)) & 0x01;
+
+            if (search_path == 0)
+                honew->search.last_discrepancy = bit_index;
+        }
+
+        // Store bit into ROM_NO
+        honew->search.ROM_NO[bit_index / 8] |= (search_path << (bit_index % 8));
+
+        // Queue the selected path bit to write
+        OneWire_BUS_WriteBit(honew, search_path);
+        break;
+    case ONEWIRE_ATOMIC_SEARCH_DONE:
+        memcpy(honew->search.ROMs[honew->search.device_count], honew->search.ROM_NO, 8);
+        honew->search.device_count++;
+
+        // Determine if more devices remain
+        if (honew->search.last_discrepancy == 0)
+            honew->search.last_device_flag = 1;
+
+        OneWire_SearchStep(honew);
+        break;
     }
-    // SearchROM WIP
-//    if (honew->search.search_state != ONEWIRE_SEARCHSTATE_IDLE)
-//        OneWire_SearchROM(honew);
 
     __HAL_TIM_CLEAR_FLAG(honew->htim, TIM_FLAG_UPDATE); // Clear any pending interrupt
     honew->htim->Instance->ARR = data.wait_time;
@@ -436,11 +483,6 @@ __weak void OneWire_SearchROMCallback(OneWire_HandleTypedef* honew){
     __NOP();
 }
 
-__weak void OneWire_SearchErrorHandler(OneWire_HandleTypedef* honew){
-    __NOP();
-}
-
 __weak void OneWire_ErrorHandler(OneWire_HandleTypedef* honew){
     __NOP();
 }
-
