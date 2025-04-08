@@ -92,6 +92,23 @@ void DS18B20_WriteScratchpad(DS18B20_HandleTypedef* hds18b20){
 }
 
 /**
+* @brief Write Scratchpad
+*
+* Write the scratchpad (threshold temperatures and resolution)
+* to a single sensor (rom in hds18b20 must be correct).
+* (MatchRom - rom in hds18b20 must be correct)
+*
+* @param hds18b20: DS18B20_HandleTypedef pointer
+*
+* @retval None
+*/
+void DS18B20_RecallEEPROM(DS18B20_HandleTypedef* hds18b20) {
+    OneWire_Reset(hds18b20->honew, &(hds18b20->presence_pulse));
+    OneWire_MatchROM(hds18b20->honew, hds18b20->rom);
+    OneWire_WriteByte(hds18b20->honew, DS18B20_CMD_RECALL_EEPROM);
+}
+
+/**
 * @brief Read ROM
 *
 * Read the rom from a single sensor and save it into hds18b20->rom.
@@ -110,13 +127,14 @@ void DS18B20_ReadROM(DS18B20_HandleTypedef* hds18b20){
 /**
 * @brief Get the temperature
 *
-* Convert the temperature from the read scratchpad and return it as float.
+* Read the scratchpad from the DS18B20 and convert the temperature to float.
 *
 * @param hds18b20: DS18B20_HandleTypedef pointer
 *
 * @retval temperature as float
 */
 float DS18B20_getTemp(DS18B20_HandleTypedef* hds18b20){
+    DS18B20_ReadScratchpad(hds18b20);
     return (hds18b20->scratchpad[0] | (hds18b20->scratchpad[1] << 8)) / 16.0f;
 }
 
@@ -148,7 +166,8 @@ void DS18B20_setThresholdT(DS18B20_HandleTypedef* hds18b20, int8_t tLow, int8_t 
 /**
 * @brief Get Threshold Temperatures
 *
-* Convert the threshold temperatures from the read scratchpad and save it into pointers.
+* Read the scratchpad from the DS18B20, convert the threshold temperatures
+* and save it into the given pointers.
 *
 * @param hds18b20: DS18B20_HandleTypedef pointer
 * @param tLow: Pointer to where low threshold temp should be saved
@@ -157,6 +176,7 @@ void DS18B20_setThresholdT(DS18B20_HandleTypedef* hds18b20, int8_t tLow, int8_t 
 * @retval None
 */
 void DS18B20_getThresholdT(DS18B20_HandleTypedef* hds18b20, int8_t* tHigh, int8_t* tLow){
+    DS18B20_ReadScratchpad(hds18b20);
     *tHigh = hds18b20->scratchpad[2];
     *tLow = hds18b20->scratchpad[3];
 }
@@ -187,12 +207,13 @@ void DS18B20_setResolution(DS18B20_HandleTypedef* hds18b20, DS18B20_Resolution r
 /**
 * @brief Get Current Resolution
 *
-* Convert the resolution from the read scratchpad and return ir.
+* Read the scratchpad from the DS18B20, convert the resolution and return it.
 *
 * @param hds18b20: DS18B20_HandleTypedef pointer
 *
 * @retval Resolution as enum type
 */
 DS18B20_Resolution DS18B20_getResolution(DS18B20_HandleTypedef* hds18b20){
+    DS18B20_ReadScratchpad(hds18b20);
     return (hds18b20->scratchpad[4] & 0b01100000) >> 5;
 }
