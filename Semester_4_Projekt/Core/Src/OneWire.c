@@ -317,7 +317,16 @@ void OneWire_MatchROM(OneWire_HandleTypedef* honew, uint8_t rom[8]){
         OneWire_WriteByte(honew, rom[i]);
 }
 
-
+/**
+* @brief Start a search ROM algorithm
+*
+* This function initializes the search context inside honew to perform a normal
+* search ROM algorithm on the 1-Wire bus (find ROMs of existing devices)
+*
+* @param honew: Handle Struct pointer
+*
+* @retval None
+*/
 void OneWire_SearchStart(OneWire_HandleTypedef* honew) {
     // reset complete search context
     memset(&honew->search, 0, sizeof(OneWire_SearchContext));
@@ -325,17 +334,56 @@ void OneWire_SearchStart(OneWire_HandleTypedef* honew) {
     honew->search.device_count = 0;
     honew->search.last_discrepancy = 0;
     honew->search.last_device_flag = 0;
+    honew->search.alarm_search = 0;
 
     // Start first search iteration
     OneWire_SearchStep(honew);
 }
 
+/**
+* @brief Start an alarm search algorithm
+*
+* ---insert "ALARM" meme here---
+* This function initializes the search context inside honew to perform an alarm search
+* on the 1-Wire bus
+*
+* @param honew: Handle Struct pointer
+*
+* @retval None
+*/
+void OneWire_AlarmSearch(OneWire_HandleTypedef* honew) {
+    // reset complete search context
+    memset(&honew->search, 0, sizeof(OneWire_SearchContext));
+    honew->search.search_active = 1;
+    honew->search.device_count = 0;
+    honew->search.last_discrepancy = 0;
+    honew->search.last_device_flag = 0;
+    honew->search.alarm_search = 1; // activate alarm search
 
+    // Start first search iteration
+    OneWire_SearchStep(honew);
+}
+
+/**
+* @brief Actual search algorithm
+*
+* Here resides the actual search algorithm after beeing started with OneWire_SearchStart()
+* or OneWire_AlarmSearch(). It pushes the need instructions onto the queue, and will be called for
+* every device thats on the bus
+*
+* @param honew: Handle Struct pointer
+*
+* @retval None
+*/
 void OneWire_SearchStep(OneWire_HandleTypedef* honew) {
     OneWire_BUS_InstructionData instrData;
 
     if (honew->search.last_device_flag) {
         honew->search.search_active = 0;
+        if (honew->search.alarm_search == 0) // normal search done
+            OneWire_SearchROMCallback(honew);
+        else // alarm search done
+            OneWire_AlarmSearchCallback(honew);
         return; // All devices found
     }
 
@@ -343,7 +391,10 @@ void OneWire_SearchStep(OneWire_HandleTypedef* honew) {
     memset(honew->search.ROM_NO, 0, 8);
 
     OneWire_Reset(honew, &(honew->temp_byte_buffer[0])); // save the presence pulse somewhere
-    OneWire_WriteByte(honew, ONEWIRE_CMD_SearchROM); // Search ROM command
+    if (honew->search.alarm_search == 0)
+        OneWire_WriteByte(honew, ONEWIRE_CMD_SearchROM); // Search ROM command
+    else // alarm_search set to 1
+        OneWire_WriteByte(honew, ONEWIRE_CMD_AlarmSearch); // Alarm Search command
 
 
     for (uint8_t bit = 0; bit < 64; bit++) {
@@ -423,7 +474,11 @@ void OneWire_TIM_Hook(OneWire_HandleTypedef* honew){
 
         if (bit == 1 && comp == 1) {
             honew->search.search_active = 0; // No devices responding
-            OneWire_SearchROMCallback(honew); // abort
+            honew->search.search_active = 0;
+            if (honew->search.alarm_search == 0) // normal search done
+                OneWire_SearchROMCallback(honew);
+            else // alarm search done
+                OneWire_AlarmSearchCallback(honew);
             break;
         }
 
@@ -436,7 +491,7 @@ void OneWire_TIM_Hook(OneWire_HandleTypedef* honew){
             else if (bit_index > honew->search.last_discrepancy)
                 search_path = 0;
             else
-                search_path = (honew->search.ROM_NO[bit_index / 8] >> (bit_index % 8)) & 0x01;
+                search_path = (honew->search.ROM_NO[bit_index / 8] >> (bit_index % 8)) & 0x01; // This margin is too small to explain this feckery
 
             if (search_path == 0)
                 honew->search.last_discrepancy = bit_index;
@@ -482,6 +537,11 @@ __weak void OneWire_ReadROMCallback(OneWire_HandleTypedef* honew){
 __weak void OneWire_SearchROMCallback(OneWire_HandleTypedef* honew){
     __NOP();
 }
+
+__weak void OneWire_AlarmSearchCallback(OneWire_HandleTypedef*) {
+    __NOP();
+}
+
 
 __weak void OneWire_ErrorHandler(OneWire_HandleTypedef* honew){
     __NOP();
