@@ -6,13 +6,8 @@
  */
 
 #include "i2clcd.h"
-#include "stdbool.h"
 
 extern I2C_HandleTypeDef hi2c1;
-
-#define SLAVE_ADDRESS_LCD 0x27 << 1
-#define LINES 4
-#define COLUMS 20
 
 uint8_t lcd_get_pos(uint8_t line, uint8_t column)
 {
@@ -30,11 +25,15 @@ void lcd_send_cmd(char cmd)	//control commands
 	data_t[1] = data_u | 0x08; //en=0, rs=0
 	data_t[2] = data_l | 0x0C; //en=1, rs=0
 	data_t[3] = data_l | 0x08; //en=0, rs=0
-	HAL_I2C_Master_Transmit(&hi2c1, SLAVE_ADDRESS_LCD, (uint8_t *)data_t, 4, 100);
+	HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(&hi2c1, SLAVE_ADDRESS_LCD, (uint8_t *)data_t, 4, 100);
 	//The LCD receives an 8-bit command, which is sent in two 4-bit nibbles.
+	if (status == HAL_ERROR)
+	{
+		lcd_i2c_error();
+	}
 }
 
-void lcd_send_data(char data) //Drawing commands
+void lcd_send_data(char data) //drawing commands
 {
 	char data_u, data_l;
 	uint8_t data_t[4];
@@ -44,8 +43,17 @@ void lcd_send_data(char data) //Drawing commands
 	data_t[1] = data_u | 0x09; //en=0, rs=1
 	data_t[2] = data_l | 0x0D; //en=1, rs=1
 	data_t[3] = data_l | 0x09; //en=0, rs=1
-	HAL_I2C_Master_Transmit(&hi2c1, SLAVE_ADDRESS_LCD, (uint8_t *)data_t, 4, 100);
+	HAL_StatusTypeDef status = HAL_I2C_Master_Transmit(&hi2c1, SLAVE_ADDRESS_LCD, (uint8_t *)data_t, 4, 100);
 	//The LCD receives an 8-bit command, which is sent in two 4-bit nibbles.
+	if (status == HAL_ERROR)
+		{
+			lcd_i2c_error();
+		}
+}
+
+__weak void lcd_i2c_error(void)
+{
+    __NOP();//No Operation
 }
 
 void lcd_clear(void)
@@ -79,35 +87,48 @@ void lcd_init(void)
 	lcd_send_cmd(0x0C); //Display on/off control --> D = 1, C and B = 0. (Cursor and blink, last two bits)
 }
 
+
 void lcd_send_string(const char *str)
 {
     static const struct {
         uint8_t utf8;
         uint8_t lcd;
     } char_map[] = {
-        {0xA4, 0xE1}, // ä -> LCD-Code for ä
-        {0xB6, 0xEF}, // ö -> LCD-Code for ö
-        {0xBC, 0xF5}, // ü -> LCD-Code for ü
-        {0x9F, 0xE2}  // ß -> LCD-Code for ß
+        {0xA4, 0xE1}, // ä -> LCD-Code für ä
+        {0xB6, 0xEF}, // ö -> LCD-Code für ö
+        {0xBC, 0xF5}, // ü -> LCD-Code für ü
+        {0x9F, 0xE2}  // ß -> LCD-Code für ß
     };
 
     while (*str)
     {
-        if ((uint8_t)*str == 0xC3) // UTF-8 Multibyte-Praefix
+        if ((uint8_t)*str == 0xC3) // UTF-8 Multibyte-Präfix
         {
-            str++;
+            str++; // Check next character
+            bool found = false;
+
             for (int i = 0; i < sizeof(char_map) / sizeof(char_map[0]); i++)
             {
                 if ((uint8_t)*str == char_map[i].utf8)
                 {
                     lcd_send_data(char_map[i].lcd);
-                    str++;
-                    goto next_char;
+                    str++; // Skips the character
+                    found = true;
+                    break; // Exit loop because character was replaced
                 }
             }
+
+            if (!found) // If no replacement character was found, send original character
+            {
+                lcd_send_data(*str);
+                str++;
+            }
         }
-        lcd_send_data(*str++);
-    next_char:;
+        else
+        {
+            lcd_send_data(*str);
+            str++;
+        }
     }
 }
 
