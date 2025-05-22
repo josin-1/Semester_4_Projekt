@@ -183,6 +183,7 @@ typedef struct {
     uint8_t bit_index;
     uint8_t bit_value;
     uint8_t search_active;
+    uint8_t alarm_search;
 } OneWire_SearchContext;
 
 typedef struct {
@@ -211,12 +212,16 @@ void OneWire_MatchROM(OneWire_HandleTypedef*, uint8_t[8]);
 void OneWire_SearchStart(OneWire_HandleTypedef*);
 void OneWire_SearchStep(OneWire_HandleTypedef*);
 
+void OneWire_AlarmSearch(OneWire_HandleTypedef*);
+
+
 void OneWire_TIM_Hook(OneWire_HandleTypedef*);
 
 void OneWire_ReadDoneCallback(OneWire_HandleTypedef*);
 void OneWire_ResetDoneCallback(OneWire_HandleTypedef*);
 void OneWire_ReadROMCallback(OneWire_HandleTypedef*);
 void OneWire_SearchROMCallback(OneWire_HandleTypedef*);
+void OneWire_AlarmSearchCallback(OneWire_HandleTypedef*);
 
 void OneWire_ErrorHandler(OneWire_HandleTypedef*);
 
