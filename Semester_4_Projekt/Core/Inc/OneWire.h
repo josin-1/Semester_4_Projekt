@@ -123,8 +123,8 @@
 #define ONEWIRE_TIMINGS_READBIT_HIGH    1400                // (6)
 #define ONEWIRE_TIMINGS_READBIT_HOLD    4500                // (7)
 #define ONEWIRE_TIMINGS_RESET_LOW       48000               // (8)
-#define ONEWIRE_TIMINGS_RESET_HIGH      10000               // (9)
-#define ONEWIRE_TIMINGS_RESET_HOLD      (48000 - 10000)     // (10)
+#define ONEWIRE_TIMINGS_RESET_HIGH      6000                // (9)
+#define ONEWIRE_TIMINGS_RESET_HOLD      (48000 - 6000)      // (10)
 
 // --- MODIFY BELOW AT OWN RISK ---
 
