@@ -1,6 +1,6 @@
 # Microcontroller Programming Project / 4th Semester
 This Project was made during a lecture in Microcontroller-Programming
-for a Bachelor's Degree in Applied Electronics, made by *Johra-Markus Singh* and *Sebastian Heide*
+for a Bachelor's Degree in Applied Electronics, made by *J.-M. Singh* and *S. Heide*
 
 ## Key Components
 - LCD 20x4 with PCF8574 Port Expander
